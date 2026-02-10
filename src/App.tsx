@@ -1,93 +1,10 @@
 import { useState, useEffect } from 'react';
 import { ImageWithFallback } from './components/figma/ImageWithFallback';
 import { ActivityLog } from './components/ActivityLog';
+import { api, logActivity } from './api';
 
-const projectId = (import.meta.env.VITE_SUPABASE_URL ?? '').replace('https://', '').split('.')[0];
-const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
-
-interface Cattle {
-  id: string;
-  name: string;
-  breed: string;
-  dateOfBirth: string;
-  sex: string;
-  imageUrl?: string;
-  servedDate?: string;
-  matingBreed?: string;
-  expectedCalfBirthDate?: string;
-  calfBirthDate?: string;
-  calfSex?: string;
-  driedDate?: string;
-  createdBy?: string;
-  lastEditedBy?: string;
-  lastEditedAt?: string;
-  lastEditedField?: string;
-}
-
-interface MilkRecord {
-  id: string;
-  cowName: string;
-  date: string;
-  morningAmount: number;
-  eveningAmount: number;
-  totalDaily: number;
-  addedBy?: string;
-}
-
-interface ActivityEntry {
-  id: string;
-  timestamp: string;
-  user: string;
-  action: 'add' | 'edit' | 'delete';
-  category: 'cattle' | 'milk';
-  target: string;
-  details: string;
-}
-
-// Helper to log an activity to Supabase (shared across all users)
-async function logActivity(entry: Omit<ActivityEntry, 'id' | 'timestamp'>) {
-  try {
-    // Save to backend for sharing across users
-    const response = await fetch(
-      'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/activities',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + publicAnonKey,
-        },
-        body: JSON.stringify(entry),
-      }
-    );
-    
-    if (!response.ok) {
-      throw new Error('Failed to log activity to server');
-    }
-    
-    // Also keep in localStorage for local fallback
-    const localLog: ActivityEntry[] = JSON.parse(localStorage.getItem('activityLog') || '[]');
-    localLog.unshift({
-      ...entry,
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-      timestamp: new Date().toISOString(),
-    });
-    localStorage.setItem('activityLog', JSON.stringify(localLog.slice(0, 100)));
-  } catch (err) {
-    console.error('Failed to log activity:', err);
-    // Fallback to localStorage
-    try {
-      const log: ActivityEntry[] = JSON.parse(localStorage.getItem('activityLog') || '[]');
-      log.unshift({
-        ...entry,
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-        timestamp: new Date().toISOString(),
-      });
-      localStorage.setItem('activityLog', JSON.stringify(log));
-    } catch (e) {
-      console.error('Failed to save activity locally:', e);
-    }
-  }
-}
+// Helper to log an activity to the API (shared across all users)
+// Note: logActivity is now imported from './api'
 
 // Allowed users (only these 2 can log in)
 const ALLOWED_USERS = [
@@ -370,33 +287,8 @@ function CattleRecords(props: { currentUser: string }) {
 
   const loadCattle = async () => {
     try {
-      const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/cattle',
-        {
-          headers: {
-            Authorization: 'Bearer ' + publicAnonKey,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to load cattle');
-      }
-
-      const data = await response.json();
-      // Merge audit info from localStorage for records that don't have it from server
-      const auditData = JSON.parse(localStorage.getItem('cattleAudit') || '{}');
-      const enrichedData = (Array.isArray(data) ? data : []).map((cattle: Cattle) => {
-        const audit = auditData[cattle.id];
-        return {
-          ...cattle,
-          createdBy: cattle.createdBy || (audit ? audit.createdBy : ''),
-          lastEditedBy: cattle.lastEditedBy || (audit ? audit.lastEditedBy : ''),
-          lastEditedAt: cattle.lastEditedAt || (audit ? audit.lastEditedAt : ''),
-          lastEditedField: cattle.lastEditedField || (audit ? audit.lastEditedField : ''),
-        };
-      });
-      setCattleList(enrichedData);
+      const data = await api.cattle.list();
+      setCattleList(data);
     } catch (error) {
       console.error('Error loading cattle:', error);
     } finally {
@@ -411,19 +303,7 @@ function CattleRecords(props: { currentUser: string }) {
     }
 
     try {
-      const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/cattle/' + id,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: 'Bearer ' + publicAnonKey,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to delete cattle');
-      }
+      await api.cattle.delete(id);
 
       logActivity({
         user: props.currentUser,
@@ -592,26 +472,11 @@ function AddCattleModal(props: { onClose: () => void; onSuccess: () => void; cur
       let imageUrl = '';
 
       if (imageFile) {
-        const formDataImg = new FormData();
-        formDataImg.append('file', imageFile);
-
-        const uploadResponse = await fetch(
-          'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/upload-image',
-          {
-            method: 'POST',
-            headers: {
-              Authorization: 'Bearer ' + publicAnonKey,
-            },
-            body: formDataImg,
-          }
-        );
-
-        if (!uploadResponse.ok) {
+        const uploadResult = await api.images.upload(imageFile);
+        if (!uploadResult.success || !uploadResult.data) {
           throw new Error('Failed to upload image');
         }
-
-        const uploadData = await uploadResponse.json();
-        imageUrl = uploadData.url;
+        imageUrl = uploadResult.data.url;
       }
 
       const cattleData: Record<string, string> = {
@@ -634,38 +499,7 @@ function AddCattleModal(props: { onClose: () => void; onSuccess: () => void; cur
         if (formData.driedDate) cattleData.driedDate = formData.driedDate;
       }
 
-      const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/cattle',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + publicAnonKey,
-          },
-          body: JSON.stringify(cattleData),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to add cattle');
-      }
-
-      const createdCattle = await response.json();
-
-      // Store audit info in localStorage as backup
-      if (createdCattle.id) {
-        try {
-          const auditData = JSON.parse(localStorage.getItem('cattleAudit') || '{}');
-          auditData[createdCattle.id] = {
-            createdBy: props.currentUser,
-            lastEditedBy: props.currentUser,
-            lastEditedAt: new Date().toISOString(),
-          };
-          localStorage.setItem('cattleAudit', JSON.stringify(auditData));
-        } catch (err) {
-          console.error('Failed to save cattle audit:', err);
-        }
-      }
+      const createdCattle = await api.cattle.create(cattleData);
 
       logActivity({
         user: props.currentUser,
@@ -884,20 +718,7 @@ function CattleDetailsModal(props: { cattle: Cattle; onClose: () => void; onUpda
   const loadMilkRecords = async () => {
     setMilkLoading(true);
     try {
-      const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/milk',
-        {
-          headers: {
-            Authorization: 'Bearer ' + publicAnonKey,
-          },
-        }
-      );
-      if (!response.ok) {
-        console.error('Failed to load milk records, status:', response.status);
-        return;
-      }
-      const data = await response.json();
-      const records: MilkRecord[] = Array.isArray(data) ? data : [];
+      const records = await api.milk.list();
       const cowRecords = records.filter((r) => r.cowName.trim().toLowerCase() === props.cattle.name.trim().toLowerCase())
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setMilkRecords(cowRecords);
@@ -932,26 +753,11 @@ function CattleDetailsModal(props: { cattle: Cattle; onClose: () => void; onUpda
 
       // Upload new image if selected
       if (newImageFile) {
-        const formDataImg = new FormData();
-        formDataImg.append('file', newImageFile);
-
-        const uploadResponse = await fetch(
-          'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/upload-image',
-          {
-            method: 'POST',
-            headers: {
-              Authorization: 'Bearer ' + publicAnonKey,
-            },
-            body: formDataImg,
-          }
-        );
-
-        if (!uploadResponse.ok) {
+        const uploadResult = await api.images.upload(newImageFile);
+        if (!uploadResult.success || !uploadResult.data) {
           throw new Error('Failed to upload image');
         }
-
-        const uploadData = await uploadResponse.json();
-        imageUrl = uploadData.url;
+        imageUrl = uploadResult.data.url;
       }
 
       // Build the full updated cattle record
@@ -990,58 +796,8 @@ function CattleDetailsModal(props: { cattle: Cattle; onClose: () => void; onUpda
         if (value !== undefined) cleanData[key] = value;
       }
 
-      // Delete the old record and re-create with updated data
-      const deleteResponse = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/cattle/' + props.cattle.id,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: 'Bearer ' + publicAnonKey,
-          },
-        }
-      );
-
-      if (!deleteResponse.ok) {
-        throw new Error('Failed to delete old cattle record');
-      }
-
-      const createResponse = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/cattle',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + publicAnonKey,
-          },
-          body: JSON.stringify(cleanData),
-        }
-      );
-
-      if (!createResponse.ok) {
-        throw new Error('Failed to create updated cattle record');
-      }
-
-      const updatedRecord = await createResponse.json();
-
-      // Store audit info in localStorage
-      if (updatedRecord.id) {
-        try {
-          const auditData = JSON.parse(localStorage.getItem('cattleAudit') || '{}');
-          auditData[updatedRecord.id] = {
-            createdBy: props.cattle.createdBy || props.currentUser,
-            lastEditedBy: props.currentUser,
-            lastEditedAt: new Date().toISOString(),
-            lastEditedField: editedField,
-          };
-          // Remove old ID audit if it changed
-          if (updatedRecord.id !== props.cattle.id) {
-            delete auditData[props.cattle.id];
-          }
-          localStorage.setItem('cattleAudit', JSON.stringify(auditData));
-        } catch (err) {
-          console.error('Failed to save cattle audit:', err);
-        }
-      }
+      // Update the record using PUT
+      const updatedRecord = await api.cattle.update(props.cattle.id, cleanData);
 
       logActivity({
         user: props.currentUser,
@@ -1437,16 +1193,7 @@ function MilkProduction(props: { currentUser: string }) {
 
   const loadFemaleCattle = async () => {
     try {
-      const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/cattle',
-        {
-          headers: {
-            Authorization: 'Bearer ' + publicAnonKey,
-          },
-        }
-      );
-      if (!response.ok) return;
-      const data: Cattle[] = await response.json();
+      const data = await api.cattle.list();
       const females = data.filter((c) => c.sex === 'female').map((c) => c.name).sort();
       setFemaleCattle(females);
     } catch (error) {
@@ -1456,27 +1203,8 @@ function MilkProduction(props: { currentUser: string }) {
 
   const loadMilkRecords = async () => {
     try {
-      const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/milk',
-        {
-          headers: {
-            Authorization: 'Bearer ' + publicAnonKey,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to load milk records');
-      }
-
-      const data = await response.json();
-      // Merge addedBy from localStorage (server doesn't persist it yet)
-      const auditData = JSON.parse(localStorage.getItem('milkAudit') || '{}');
-      const enrichedData = (Array.isArray(data) ? data : []).map((record: MilkRecord) => ({
-        ...record,
-        addedBy: record.addedBy || auditData[record.id] || '',
-      }));
-      setMilkRecords(enrichedData);
+      const data = await api.milk.list();
+      setMilkRecords(data);
     } catch (error) {
       console.error('Error loading milk records:', error);
     } finally {
@@ -1491,19 +1219,7 @@ function MilkProduction(props: { currentUser: string }) {
     }
 
     try {
-      const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/milk/' + id,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: 'Bearer ' + publicAnonKey,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to delete milk record');
-      }
+      await api.milk.delete(id);
 
       logActivity({
         user: props.currentUser,
@@ -1747,40 +1463,13 @@ function AddMilkRecordModal(props: {
     const eveningAmount = parseFloat(formData.eveningAmount) || 0;
 
     try {
-      const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/milk',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + publicAnonKey,
-          },
-          body: JSON.stringify({
-            cowName: formData.cowName,
-            date: formData.date,
-            morningAmount,
-            eveningAmount,
-            addedBy: props.currentUser,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to add milk record');
-      }
-
-      const createdRecord = await response.json();
-
-      // Store addedBy in localStorage since the server doesn't persist it yet
-      if (createdRecord.id) {
-        try {
-          const auditData = JSON.parse(localStorage.getItem('milkAudit') || '{}');
-          auditData[createdRecord.id] = props.currentUser;
-          localStorage.setItem('milkAudit', JSON.stringify(auditData));
-        } catch (err) {
-          console.error('Failed to save audit data:', err);
-        }
-      }
+      await api.milk.create({
+        cowName: formData.cowName,
+        date: formData.date,
+        morningAmount,
+        eveningAmount,
+        addedBy: props.currentUser,
+      });
 
       logActivity({
         user: props.currentUser,
