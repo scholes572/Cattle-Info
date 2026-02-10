@@ -193,6 +193,44 @@ app.delete('/make-server-211b61e5/milk/:id', async (c) => {
   }
 });
 
+// ==================== ACTIVITY LOG ROUTES ====================
+
+// Get all activity logs
+app.get('/make-server-211b61e5/activities', async (c) => {
+  try {
+    const activities = await kv.getByPrefix('activity:');
+    console.log('Retrieved activity logs:', activities.length);
+    
+    // Sort by timestamp (most recent first)
+    activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    
+    return c.json(activities);
+  } catch (error) {
+    console.error('Error fetching activity logs:', error);
+    return c.json({ error: 'Failed to fetch activity logs' }, 500);
+  }
+});
+
+// Add new activity log
+app.post('/make-server-211b61e5/activities', async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const activity = {
+      id,
+      timestamp: new Date().toISOString(),
+      ...body
+    };
+    
+    await kv.set(`activity:${id}`, activity);
+    console.log('Added activity log:', id);
+    return c.json(activity, 201);
+  } catch (error) {
+    console.error('Error adding activity log:', error);
+    return c.json({ error: 'Failed to add activity log' }, 500);
+  }
+});
+
 // ==================== IMAGE UPLOAD ====================
 
 app.post('/make-server-211b61e5/upload-image', async (c) => {

@@ -44,18 +44,48 @@ interface ActivityEntry {
   details: string;
 }
 
-// Helper to log an activity to localStorage
-function logActivity(entry: Omit<ActivityEntry, 'id' | 'timestamp'>) {
+// Helper to log an activity to Supabase (shared across all users)
+async function logActivity(entry: Omit<ActivityEntry, 'id' | 'timestamp'>) {
   try {
-    const log: ActivityEntry[] = JSON.parse(localStorage.getItem('activityLog') || '[]');
-    log.unshift({
+    // Save to backend for sharing across users
+    const response = await fetch(
+      'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/activities',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + publicAnonKey,
+        },
+        body: JSON.stringify(entry),
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error('Failed to log activity to server');
+    }
+    
+    // Also keep in localStorage for local fallback
+    const localLog: ActivityEntry[] = JSON.parse(localStorage.getItem('activityLog') || '[]');
+    localLog.unshift({
       ...entry,
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       timestamp: new Date().toISOString(),
     });
-    localStorage.setItem('activityLog', JSON.stringify(log));
+    localStorage.setItem('activityLog', JSON.stringify(localLog.slice(0, 100)));
   } catch (err) {
     console.error('Failed to log activity:', err);
+    // Fallback to localStorage
+    try {
+      const log: ActivityEntry[] = JSON.parse(localStorage.getItem('activityLog') || '[]');
+      log.unshift({
+        ...entry,
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        timestamp: new Date().toISOString(),
+      });
+      localStorage.setItem('activityLog', JSON.stringify(log));
+    } catch (e) {
+      console.error('Failed to save activity locally:', e);
+    }
   }
 }
 
@@ -143,6 +173,7 @@ function LoginScreen(props: { onLogin: (username: string) => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -245,14 +276,14 @@ function LoginScreen(props: { onLogin: (username: string) => void }) {
               />
             </div>
 
-            <div>
+            <div style={{ position: 'relative' }}>
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
                 style={{
                   width: '100%',
-                  padding: '0.75rem 1rem',
+                  padding: '0.75rem 2.5rem 0.75rem 1rem',
                   borderRadius: '0.5rem',
                   background: 'rgba(255,255,255,0.08)',
                   border: '1px solid rgba(255,255,255,0.15)',
@@ -265,6 +296,24 @@ function LoginScreen(props: { onLogin: (username: string) => void }) {
                 autoComplete="current-password"
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '0.75rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'rgba(255,255,255,0.5)',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                }}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? '🙈' : '👁️'}
+              </button>
             </div>
 
             <button

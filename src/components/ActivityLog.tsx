@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 
+const projectId = (import.meta.env.VITE_SUPABASE_URL ?? '').replace('https://', '').split('.')[0];
+const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
+
 export interface ActivityEntry {
   id: string;
   timestamp: string;
@@ -15,16 +18,43 @@ interface ActivityLogProps {}
 export function ActivityLog(_props: ActivityLogProps) {
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('activityLog');
-      if (raw) setEntries(JSON.parse(raw));
-    } catch {
-      setEntries([]);
-    }
-    setIsLoaded(true);
+    loadActivities();
   }, []);
+
+  const loadActivities = async () => {
+    try {
+      const response = await fetch(
+        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/activities',
+        {
+          headers: {
+            Authorization: 'Bearer ' + publicAnonKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch activities');
+      }
+
+      const data = await response.json();
+      setEntries(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error loading activities:', err);
+      setError('Failed to load activities from server');
+      // Fallback to localStorage
+      try {
+        const raw = localStorage.getItem('activityLog');
+        if (raw) setEntries(JSON.parse(raw));
+      } catch {
+        setEntries([]);
+      }
+    } finally {
+      setIsLoaded(true);
+    }
+  };
 
   const getActionConfig = (action: string) => {
     switch (action) {
@@ -77,10 +107,24 @@ export function ActivityLog(_props: ActivityLogProps) {
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
       {/* Header */}
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Activity Log</h2>
-        <p className="text-gray-500 text-sm mt-1">Recent actions and changes</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Activity Log</h2>
+          <p className="text-gray-500 text-sm mt-1">Recent actions and changes from all users</p>
+        </div>
+        <button
+          onClick={loadActivities}
+          className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm"
+        >
+          🔄 Refresh
+        </button>
       </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
+          {error} - Showing cached data. Make sure to deploy the updated Supabase function.
+        </div>
+      )}
 
       {/* Activity List */}
       {entries.length === 0 ? (
