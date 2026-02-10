@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: cattle-keeper-api
+    env: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_PATH
+        value: ./data/database.sqlite
+      - key: UPLOAD_DIR
+        value: ./uploads
+      - key: API_KEY
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: "*"
