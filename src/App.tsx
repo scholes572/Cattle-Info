@@ -49,7 +49,7 @@ async function logActivity(entry: Omit<ActivityEntry, 'id' | 'timestamp'>) {
   try {
     // Save to backend for sharing across users
     const response = await fetch(
-      'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/activities',
+      'https://' + projectId + '.supabase.co/functions/v1/make-server/activities',
       {
         method: 'POST',
         headers: {
@@ -371,7 +371,7 @@ function CattleRecords(props: { currentUser: string }) {
   const loadCattle = async () => {
     try {
       const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/cattle',
+        'https://' + projectId + '.supabase.co/functions/v1/make-server/cattle',
         {
           headers: {
             Authorization: 'Bearer ' + publicAnonKey,
@@ -412,7 +412,7 @@ function CattleRecords(props: { currentUser: string }) {
 
     try {
       const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/cattle/' + id,
+        'https://' + projectId + '.supabase.co/functions/v1/make-server/cattle/' + id,
         {
           method: 'DELETE',
           headers: {
@@ -602,7 +602,7 @@ function AddCattleModal(props: { isOpen: boolean; onClose: () => void; onCattleA
         formData.append('file', imageFile);
 
         const imageUploadResponse = await fetch(
-          'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/upload-image',
+          'https://' + projectId + '.supabase.co/functions/v1/make-server/upload-image',
           {
             method: 'POST',
             headers: {
@@ -630,7 +630,7 @@ function AddCattleModal(props: { isOpen: boolean; onClose: () => void; onCattleA
       };
 
       const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/cattle',
+        'https://' + projectId + '.supabase.co/functions/v1/make-server/cattle',
         {
           method: 'POST',
           headers: {
@@ -768,7 +768,7 @@ function CattleDetailsModal(props: { cattle: Cattle; onClose: () => void; onUpda
     try {
       setIsUploading(true);
       const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/cattle/' + props.cattle.id,
+        'https://' + projectId + '.supabase.co/functions/v1/make-server/cattle/' + props.cattle.id,
         {
           method: 'PUT',
           headers: {
@@ -993,7 +993,7 @@ function MilkProduction(props: { currentUser: string }) {
   const loadMilkRecords = async () => {
     try {
       const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/milk',
+        'https://' + projectId + '.supabase.co/functions/v1/make-server/milk',
         {
           headers: {
             Authorization: 'Bearer ' + publicAnonKey,
@@ -1026,7 +1026,7 @@ function MilkProduction(props: { currentUser: string }) {
 
     try {
       const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/milk/' + id,
+        'https://' + projectId + '.supabase.co/functions/v1/make-server/milk/' + id,
         {
           method: 'DELETE',
           headers: {
@@ -1148,7 +1148,7 @@ function AddMilkModal(props: { isOpen: boolean; onClose: () => void; onMilkAdded
       const total = morning + evening;
 
       const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/milk',
+        'https://' + projectId + '.supabase.co/functions/v1/make-server/milk',
         {
           method: 'POST',
           headers: {

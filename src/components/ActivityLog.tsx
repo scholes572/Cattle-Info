@@ -27,7 +27,7 @@ export function ActivityLog(_props: ActivityLogProps) {
   const loadActivities = async () => {
     try {
       const response = await fetch(
-        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/activities',
+        'https://' + projectId + '.supabase.co/functions/v1/make-server/activities',
         {
           headers: {
             Authorization: 'Bearer ' + publicAnonKey,
