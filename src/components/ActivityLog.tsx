@@ -1,5 +1,17 @@
 import { useState, useEffect } from 'react';
-import { api, ActivityEntry } from '../api';
+
+const projectId = (import.meta.env.VITE_SUPABASE_URL ?? '').replace('https://', '').split('.')[0];
+const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
+
+export interface ActivityEntry {
+  id: string;
+  timestamp: string;
+  category: 'cattle' | 'milk';
+  action: 'add' | 'edit' | 'delete';
+  target: string;
+  details?: string;
+  user: string;
+}
 
 interface ActivityLogProps {}
 
@@ -14,8 +26,21 @@ export function ActivityLog(_props: ActivityLogProps) {
 
   const loadActivities = async () => {
     try {
-      const data = await api.activities.list();
-      setEntries(data);
+      const response = await fetch(
+        'https://' + projectId + '.supabase.co/functions/v1/make-server-211b61e5/activities',
+        {
+          headers: {
+            Authorization: 'Bearer ' + publicAnonKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch activities');
+      }
+
+      const data = await response.json();
+      setEntries(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error loading activities:', err);
       setError('Failed to load activities from server');
